@@ -6,7 +6,7 @@
 
     <groupId>rs.adsdev</groupId>
     <artifactId>ifconfig-java</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>ifconfig-java</name>
@@ -122,6 +122,17 @@
                     <plugin>
                         <artifactId>maven-javadoc-plugin</artifactId>
                         <version>${maven-javadoc-plugin.version}</version>
+                        <configuration>
+                            <!--
+                                'all,-missing' keeps the useful Javadoc checks
+                                (broken @link, malformed HTML, bad references)
+                                while silencing the noisy "no comment / no @param /
+                                no @return" warnings. Records and enum constants
+                                are self-documenting; adding "captain obvious"
+                                Javadoc on every component just adds noise.
+                            -->
+                            <doclint>all,-missing</doclint>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>attach-javadocs</id>

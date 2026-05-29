@@ -22,8 +22,11 @@ jobs:
           server-id: central
           server-username: CENTRAL_USERNAME
           server-password: CENTRAL_PASSWORD
+          # Import the secret key into the gpg-agent, but do NOT pass the
+          # passphrase via settings.xml — maven-gpg-plugin reads it from
+          # the MAVEN_GPG_PASSPHRASE env var below, which avoids the
+          # "Sensitive content loaded from settings.xml" warning.
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-          gpg-passphrase: GPG_PASSPHRASE
 
       - name: Verify tag matches pom.xml version
         run: |
@@ -38,5 +41,5 @@ jobs:
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: mvn -B -ntp -Prelease deploy
