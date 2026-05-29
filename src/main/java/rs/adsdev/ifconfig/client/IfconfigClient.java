@@ -80,7 +80,7 @@ public final class IfconfigClient {
         // LinkedHashMap (not Map.of) so the query string ordering stays
         // ip=...&fields=... — Map.of randomizes iteration order, which would
         // make logs and test assertions non-deterministic.
-        final LinkedHashMap<String, String> params = new LinkedHashMap<>(2);
+        var params = new LinkedHashMap<String, String>(2);
         params.put("ip", ip);
         params.put("fields", Field.toQuery(fields));
         return readJson(buildUri("/json", params), IP_INFO);
@@ -114,7 +114,7 @@ public final class IfconfigClient {
         } catch (final IOException ex) {
             throw new IfconfigException("Failed to serialize batch body", ex);
         }
-        final HttpRequest req = baseRequest(buildUri("/batch", Map.of()))
+        var req = baseRequest(buildUri("/batch", Map.of()))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
@@ -135,11 +135,11 @@ public final class IfconfigClient {
 
     @Nonnull
     private URI buildUri(final @Nonnull String path, final @Nonnull Map<String, String> params) {
-        final StringBuilder sb = new StringBuilder(baseUrl.toString()).append(path);
+        var sb = new StringBuilder(baseUrl.toString()).append(path);
         if (!params.isEmpty()) {
             sb.append('?');
-            boolean first = true;
-            for (final Map.Entry<String, String> e : params.entrySet()) {
+            var first = true;
+            for (var e : params.entrySet()) {
                 if (!first) {
                     sb.append('&');
                 }
@@ -154,14 +154,14 @@ public final class IfconfigClient {
 
     @Nonnull
     private HttpRequest.Builder baseRequest(final @Nonnull URI uri) {
-        final HttpRequest.Builder b = HttpRequest.newBuilder(uri)
+        var builder = HttpRequest.newBuilder(uri)
                 .timeout(requestTimeout)
                 .header("Accept", "application/json")
                 .header("User-Agent", userAgent);
         if (apiKey != null) {
-            b.header("Authorization", "Bearer " + apiKey);
+            builder.header("Authorization", "Bearer " + apiKey);
         }
-        return b;
+        return builder;
     }
 
     @Nonnull
@@ -171,7 +171,7 @@ public final class IfconfigClient {
 
     @Nonnull
     private <T> T readJson(final @Nonnull HttpRequest req, final @Nonnull TypeReference<T> type) {
-        final String body = readText(req);
+        var body = readText(req);
         try {
             return json.readValue(body, type);
         } catch (final IOException e) {

@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
@@ -66,8 +65,8 @@ class IfconfigClientTest {
                 {"status":"success","query":"203.0.113.5","country":"Germany","countryCode":"DE","city":"Berlin"}
                 """));
 
-        final IpInfo info = client().myIp();
-        final CapturedRequest req = seenRequests.pop();
+        var info = client().myIp();
+        var req = seenRequests.pop();
 
         assertEquals("GET", req.method);
         assertEquals("/json", req.path);
@@ -84,8 +83,8 @@ class IfconfigClientTest {
                 {"status":"success","query":"1.2.3.4","countryCode":"US"}
                 """));
 
-        final IpInfo info = client().lookup("1.2.3.4");
-        final CapturedRequest req = seenRequests.pop();
+        var info = client().lookup("1.2.3.4");
+        var req = seenRequests.pop();
 
         assertEquals("/json", req.path);
         assertEquals("ip=1.2.3.4", req.query);
@@ -98,8 +97,8 @@ class IfconfigClientTest {
                 {"status":"success","country":"Russia","countryCode":"RU"}
                 """));
 
-        final IpInfo info = client().lookup("8.8.8.8", EnumSet.of(Field.COUNTRY, Field.COUNTRY_CODE));
-        final CapturedRequest req = seenRequests.pop();
+        var info = client().lookup("8.8.8.8", EnumSet.of(Field.COUNTRY, Field.COUNTRY_CODE));
+        var req = seenRequests.pop();
 
         assertEquals("/json", req.path);
         assertEquals("ip=8.8.8.8&fields=country%2CcountryCode", req.query);
@@ -110,8 +109,8 @@ class IfconfigClientTest {
     void plainReturnsRawBody() {
         nextResponses.push(new CannedResponse(200, "text/plain", "203.0.113.5"));
 
-        final String body = client().plain();
-        final CapturedRequest req = seenRequests.pop();
+        var body = client().plain();
+        var req = seenRequests.pop();
 
         assertEquals("/plain", req.path);
         assertEquals("203.0.113.5", body);
@@ -119,11 +118,11 @@ class IfconfigClientTest {
 
     @Test
     void xmlReturnsRawBodyAndSendsIpQuery() {
-        final String payload = "<Info><status>success</status><country>Germany</country></Info>";
+        var payload = "<Info><status>success</status><country>Germany</country></Info>";
         nextResponses.push(new CannedResponse(200, "application/xml", payload));
 
-        final String body = client().xml("203.0.113.5");
-        final CapturedRequest req = seenRequests.pop();
+        var body = client().xml("203.0.113.5");
+        var req = seenRequests.pop();
 
         assertEquals("GET", req.method);
         assertEquals("/xml", req.path);
@@ -140,10 +139,10 @@ class IfconfigClientTest {
                 ]
                 """));
 
-        final List<IpInfo> out = client().batch(List.of(
+        var out = client().batch(List.of(
                 new BatchQuery("1.1.1.1"),
                 new BatchQuery("8.8.8.8", "country")));
-        final CapturedRequest req = seenRequests.pop();
+        var req = seenRequests.pop();
 
         assertEquals("POST", req.method);
         assertEquals("/batch", req.path);
@@ -160,7 +159,7 @@ class IfconfigClientTest {
                 {"status":1,"message":2,"query":4,"country":32,"hosting":16777216}
                 """));
 
-        final Map<String, Integer> bits = client().fieldBits();
+        var bits = client().fieldBits();
 
         assertEquals(1, bits.get("status"));
         assertEquals(32, bits.get("country"));
@@ -172,9 +171,9 @@ class IfconfigClientTest {
         nextResponses.push(new CannedResponse(429, "application/json",
                 "{\"error\":\"Too Many Requests\"}"));
 
-        final IfconfigException ex = assertThrows(IfconfigException.class, () -> client().myIp());
+        var ex = assertThrows(IfconfigException.class, () -> client().myIp());
         assertEquals(429, ex.statusCode());
-        final String body = ex.body();
+        var body = ex.body();
         assertNotNull(body);
         assertTrue(body.contains("Too Many Requests"));
     }
@@ -185,11 +184,11 @@ class IfconfigClientTest {
                 {"status":"success","country":"NL"}
                 """));
 
-        final ObjectMapper customMapper = new ObjectMapper();
-        final HttpClient customHttp = HttpClient.newBuilder()
+        var customMapper = new ObjectMapper();
+        var customHttp = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
                 .build();
-        final IfconfigClient custom = IfconfigClient.builder()
+        var custom = IfconfigClient.builder()
                 .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/")
                 .httpClient(customHttp)
                 .objectMapper(customMapper)
@@ -198,8 +197,8 @@ class IfconfigClientTest {
                 .userAgent("custom-agent/9.9")
                 .build();
 
-        final IpInfo info = custom.myIp();
-        final CapturedRequest req = seenRequests.pop();
+        var info = custom.myIp();
+        var req = seenRequests.pop();
 
         // baseUrl with trailing slash must not produce //json
         assertEquals("/json", req.path);
@@ -230,11 +229,11 @@ class IfconfigClientTest {
     private final class RecordingHandler implements HttpHandler {
         @Override
         public void handle(final HttpExchange exchange) throws IOException {
-            final byte[] reqBody = exchange.getRequestBody().readAllBytes();
+            var reqBody = exchange.getRequestBody().readAllBytes();
             // JDK's com.sun.net.httpserver.Headers normalizes keys to
             // first-letter-uppercase (e.g., "User-agent"); use a
             // case-insensitive map so tests can look up by canonical case.
-            final Map<String, String> hdrs = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            var hdrs = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
             exchange.getRequestHeaders().forEach((k, v) -> {
                 if (!v.isEmpty()) {
                     hdrs.put(k, v.getFirst());
@@ -247,13 +246,13 @@ class IfconfigClientTest {
                     hdrs,
                     new String(reqBody, StandardCharsets.UTF_8)));
 
-            final CannedResponse resp = nextResponses.isEmpty()
+            var resp = nextResponses.isEmpty()
                     ? new CannedResponse(500, "text/plain", "no canned response")
                     : nextResponses.pop();
-            final byte[] body = resp.body.getBytes(StandardCharsets.UTF_8);
+            var body = resp.body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", resp.contentType);
             exchange.sendResponseHeaders(resp.status, body.length);
-            try (final OutputStream out = exchange.getResponseBody()) {
+            try (var out = exchange.getResponseBody()) {
                 out.write(body);
             }
         }
