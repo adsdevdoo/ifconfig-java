@@ -7,6 +7,13 @@ on:
     branches: [ master ]
   workflow_dispatch:
 
+# Some actions (notably upload-artifact@v5) still declare Node.js 20 in
+# their action.yml. GitHub is forcing Node 24 as default on 2026-06-16 and
+# removing Node 20 entirely on 2026-09-16. Opt into Node 24 early so the
+# next runner upgrade doesn't break the build.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   build:
     runs-on: ubuntu-latest
