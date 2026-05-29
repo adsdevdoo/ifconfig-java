@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -76,10 +77,13 @@ public final class IfconfigClient {
      */
     @Nonnull
     public IpInfo lookup(final @Nonnull String ip, final @Nonnull Collection<Field> fields) {
-        return readJson(buildUri("/json", Map.of(
-                "ip", ip,
-                "fields", Field.toQuery(fields)
-        )), IP_INFO);
+        // LinkedHashMap (not Map.of) so the query string ordering stays
+        // ip=...&fields=... — Map.of randomizes iteration order, which would
+        // make logs and test assertions non-deterministic.
+        final LinkedHashMap<String, String> params = new LinkedHashMap<>(2);
+        params.put("ip", ip);
+        params.put("fields", Field.toQuery(fields));
+        return readJson(buildUri("/json", params), IP_INFO);
     }
 
     private static final TypeReference<IpInfo> IP_INFO = new TypeReference<>() {};
