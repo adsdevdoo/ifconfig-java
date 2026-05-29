@@ -170,7 +170,18 @@
                         <configuration>
                             <publishingServerId>central</publishingServerId>
                             <autoPublish>true</autoPublish>
-                            <waitUntil>published</waitUntil>
+                            <!--
+                                Wait only until Central has validated the bundle,
+                                not until it has fully propagated to the public
+                                repo. Central handed us a stable deploymentId at
+                                upload time, and 'autoPublish=true' means it will
+                                proceed without further action. Polling until
+                                'published' has bitten us before with a transient
+                                502 from Central's status API failing the workflow
+                                while the actual deploy continued in the
+                                background.
+                            -->
+                            <waitUntil>validated</waitUntil>
                         </configuration>
                     </plugin>
                 </plugins>
