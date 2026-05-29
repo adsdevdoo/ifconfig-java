@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * response on the server and then asserts the client sent the expected
  * method/path/headers and parsed the response correctly.
  */
+@DisplayName("IfconfigClient: HTTP wire contract and response parsing")
 class IfconfigClientTest {
 
     private HttpServer server;
@@ -60,6 +62,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("myIp() hits GET /json, sends bearer token, and parses the flat envelope")
     void myIpParsesFlatJsonResponse() {
         nextResponses.push(json("""
                 {"status":"success","query":"203.0.113.5","country":"Germany","countryCode":"DE","city":"Berlin"}
@@ -78,6 +81,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("lookup(ip) sends only ?ip= and parses the response")
     void lookupWithoutFieldsSendsOnlyIpQuery() {
         nextResponses.push(json("""
                 {"status":"success","query":"1.2.3.4","countryCode":"US"}
@@ -92,6 +96,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("lookup(ip, fields) sends ?ip=&fields= with deterministic order and wire-name CSV")
     void lookupSendsIpAndFieldsQuery() {
         nextResponses.push(json("""
                 {"status":"success","country":"Russia","countryCode":"RU"}
@@ -106,6 +111,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("plain() hits GET /plain and returns the raw text body without parsing")
     void plainReturnsRawBody() {
         nextResponses.push(new CannedResponse(200, "text/plain", "203.0.113.5"));
 
@@ -117,6 +123,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("xml(ip) hits GET /xml?ip= and returns the raw XML body for caller-side parsing")
     void xmlReturnsRawBodyAndSendsIpQuery() {
         var payload = "<Info><status>success</status><country>Germany</country></Info>";
         nextResponses.push(new CannedResponse(200, "application/xml", payload));
@@ -131,6 +138,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("batch() POSTs JSON array to /batch and parses the array response")
     void batchPostsJsonArrayAndParsesArrayResponse() {
         nextResponses.push(json("""
                 [
@@ -154,6 +162,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("fieldBits() parses GET /api/fields into a name -> bit-position integer map")
     void fieldBitsParsesIntegerMap() {
         nextResponses.push(json("""
                 {"status":1,"message":2,"query":4,"country":32,"hosting":16777216}
@@ -167,6 +176,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("Non-2xx response raises IfconfigException carrying status code and raw body")
     void nonSuccessfulStatusRaisesIfconfigException() {
         nextResponses.push(new CannedResponse(429, "application/json",
                 "{\"error\":\"Too Many Requests\"}"));
@@ -179,6 +189,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("Builder options (userAgent, httpClient, objectMapper, timeouts) propagate to requests; no apiKey => no Authorization header")
     void builderOptionsAreAppliedToRequests() {
         nextResponses.push(json("""
                 {"status":"success","country":"NL"}
@@ -209,6 +220,7 @@ class IfconfigClientTest {
     }
 
     @Test
+    @DisplayName("Field.toQuery() emits wire-name CSV and Field.toBitmask() ORs bit positions, both matching server encoding")
     void fieldToQueryAndBitmaskMatchServerEncoding() {
         // Mirrors the FlatField bits pinned on the server: country=1<<5, city=1<<9.
         assertEquals("country,city", Field.toQuery(List.of(Field.COUNTRY, Field.CITY)));
@@ -233,17 +245,17 @@ class IfconfigClientTest {
             // JDK's com.sun.net.httpserver.Headers normalizes keys to
             // first-letter-uppercase (e.g., "User-agent"); use a
             // case-insensitive map so tests can look up by canonical case.
-            var hdrs = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
+            var headers = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
             exchange.getRequestHeaders().forEach((k, v) -> {
                 if (!v.isEmpty()) {
-                    hdrs.put(k, v.getFirst());
+                    headers.put(k, v.getFirst());
                 }
             });
             seenRequests.push(new CapturedRequest(
                     exchange.getRequestMethod(),
                     exchange.getRequestURI().getPath(),
                     exchange.getRequestURI().getRawQuery(),
-                    hdrs,
+                    headers,
                     new String(reqBody, StandardCharsets.UTF_8)));
 
             var resp = nextResponses.isEmpty()
