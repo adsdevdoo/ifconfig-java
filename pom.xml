@@ -6,7 +6,7 @@
 
     <groupId>rs.adsdev</groupId>
     <artifactId>ifconfig-java</artifactId>
-    <version>1.0.1-SNAPSHOT</version>
+    <version>1.0.1</version>
     <packaging>jar</packaging>
 
     <name>ifconfig-java</name>
@@ -178,7 +178,7 @@
                                 proceed without further action. Polling until
                                 'published' has bitten us before with a transient
                                 502 from Central's status API failing the workflow
-                                while the actual deploy continued in the
+                                while the actual deployment continued in the
                                 background.
                             -->
                             <waitUntil>validated</waitUntil>
