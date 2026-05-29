@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (with Central + GPG config)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+
+      - name: Verify tag matches pom.xml version
+        run: |
+          POM_VERSION=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$POM_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::tag v$TAG_VERSION does not match pom.xml version $POM_VERSION"
+            exit 1
+          fi
+
+      - name: Publish to Maven Central
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -ntp -Prelease deploy
