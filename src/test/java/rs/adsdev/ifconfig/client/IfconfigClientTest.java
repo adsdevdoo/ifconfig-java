@@ -19,6 +19,7 @@ import java.util.Deque;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -230,7 +231,10 @@ class IfconfigClientTest {
         @Override
         public void handle(final HttpExchange exchange) throws IOException {
             final byte[] reqBody = exchange.getRequestBody().readAllBytes();
-            final Map<String, String> hdrs = new java.util.HashMap<>();
+            // JDK's com.sun.net.httpserver.Headers normalizes keys to
+            // first-letter-uppercase (e.g., "User-agent"); use a
+            // case-insensitive map so tests can look up by canonical case.
+            final Map<String, String> hdrs = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             exchange.getRequestHeaders().forEach((k, v) -> {
                 if (!v.isEmpty()) {
                     hdrs.put(k, v.getFirst());
