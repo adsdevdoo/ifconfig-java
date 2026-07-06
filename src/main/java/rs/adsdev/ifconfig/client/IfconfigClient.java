@@ -67,6 +67,7 @@ public final class IfconfigClient {
     /** {@code GET /json?ip=...} — returns geo info for the supplied IPv4 / IPv6 literal. */
     @Nonnull
     public IpInfo lookup(final @Nonnull String ip) {
+        requireNonBlank(ip, "ip");
         return readJson(buildUri("/json", Map.of("ip", ip)), IP_INFO);
     }
 
@@ -77,12 +78,27 @@ public final class IfconfigClient {
      */
     @Nonnull
     public IpInfo lookup(final @Nonnull String ip, final @Nonnull Collection<Field> fields) {
+        requireNonBlank(ip, "ip");
         // LinkedHashMap (not Map.of) so the query string ordering stays
         // ip=...&fields=... — Map.of randomizes iteration order, which would
         // make logs and test assertions non-deterministic.
         var params = new LinkedHashMap<String, String>(2);
         params.put("ip", ip);
         params.put("fields", Field.toQuery(fields));
+        return readJson(buildUri("/json", params), IP_INFO);
+    }
+
+    /**
+     * {@code GET /json?ip=...&fields=N} — like {@link #lookup(String, Collection)}
+     * but uses the numeric bitmask encoding instead of the comma-separated wire
+     * names. Build the mask with {@link Field#toBitmask(Collection)}.
+     */
+    @Nonnull
+    public IpInfo lookup(final @Nonnull String ip, final int fieldBits) {
+        requireNonBlank(ip, "ip");
+        var params = new LinkedHashMap<String, String>(2);
+        params.put("ip", ip);
+        params.put("fields", Integer.toString(fieldBits));
         return readJson(buildUri("/json", params), IP_INFO);
     }
 
@@ -93,28 +109,43 @@ public final class IfconfigClient {
     /** {@code GET /plain} — returns the caller's own IP as plain text. */
     @Nonnull
     public String plain() {
-        return readText(buildUri("/plain", Map.of()));
+        return readText(baseRequest(buildUri("/plain", Map.of()), "text/plain").GET().build());
     }
 
     /** {@code GET /xml?ip=...} — returns the raw XML payload for the supplied IP. */
     @Nonnull
     public String xml(final @Nonnull String ip) {
-        return readText(buildUri("/xml", Map.of("ip", ip)));
+        requireNonBlank(ip, "ip");
+        return readText(baseRequest(buildUri("/xml", Map.of("ip", ip)), "application/xml").GET().build());
     }
+
+    /** The server caps a single {@code /batch} call at this many items. */
+    public static final int MAX_BATCH_SIZE = 100;
 
     /**
      * {@code POST /batch} — looks up multiple addresses in a single round-trip.
-     * Requires an API key. The server caps the batch at 100 items per call.
+     * Requires an API key. The server caps the batch at {@value #MAX_BATCH_SIZE}
+     * items per call.
      */
     @Nonnull
     public List<IpInfo> batch(final @Nonnull List<BatchQuery> items) {
+        if (apiKey == null) {
+            throw new IllegalStateException("batch requires an apiKey; set one via IfconfigClient.builder().apiKey(...)");
+        }
+        if (items.isEmpty()) {
+            throw new IllegalArgumentException("batch items must not be empty");
+        }
+        if (items.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "batch size " + items.size() + " exceeds the server limit of " + MAX_BATCH_SIZE);
+        }
         final byte[] body;
         try {
             body = json.writeValueAsBytes(items);
         } catch (final IOException ex) {
             throw new IfconfigException("Failed to serialize batch body", ex);
         }
-        var req = baseRequest(buildUri("/batch", Map.of()))
+        var req = baseRequest(buildUri("/batch", Map.of()), "application/json")
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
@@ -123,8 +154,9 @@ public final class IfconfigClient {
 
     /**
      * {@code GET /api/fields} — returns the canonical map of wire field name
-     * → {@code ?fields=N} bit position. Useful for cross-checking
-     * {@link Field#bit()} values against a particular server deployment.
+     * → bit value (the single-bit mask {@code 1 << position}, e.g.
+     * {@code country -> 32}). Useful for cross-checking {@link Field#bit()}
+     * values against a particular server deployment.
      */
     @Nonnull
     public Map<String, Integer> fieldBits() {
@@ -153,10 +185,10 @@ public final class IfconfigClient {
     }
 
     @Nonnull
-    private HttpRequest.Builder baseRequest(final @Nonnull URI uri) {
+    private HttpRequest.Builder baseRequest(final @Nonnull URI uri, final @Nonnull String accept) {
         var builder = HttpRequest.newBuilder(uri)
                 .timeout(requestTimeout)
-                .header("Accept", "application/json")
+                .header("Accept", accept)
                 .header("User-Agent", userAgent);
         if (apiKey != null) {
             builder.header("Authorization", "Bearer " + apiKey);
@@ -166,29 +198,35 @@ public final class IfconfigClient {
 
     @Nonnull
     private <T> T readJson(final @Nonnull URI uri, final @Nonnull TypeReference<T> type) {
-        return readJson(baseRequest(uri).GET().build(), type);
+        return readJson(baseRequest(uri, "application/json").GET().build(), type);
     }
 
     @Nonnull
     private <T> T readJson(final @Nonnull HttpRequest req, final @Nonnull TypeReference<T> type) {
-        var body = readText(req);
+        var resp = send(req);
         try {
-            return json.readValue(body, type);
+            return json.readValue(resp.body(), type);
         } catch (final IOException e) {
-            throw new IfconfigException("Failed to parse response body", e);
+            // The body parsed cleanly at the HTTP layer (2xx) but not as JSON.
+            // Carry the status and raw body so callers can see what came back.
+            throw new IfconfigException(
+                    "Failed to parse response body from " + req.uri(),
+                    resp.statusCode(), resp.body(), e);
         }
     }
 
     @Nonnull
-    private String readText(final @Nonnull URI uri) {
-        return readText(baseRequest(uri).GET().build());
+    private String readText(final @Nonnull HttpRequest req) {
+        return send(req).body();
     }
 
     @Nonnull
-    private String readText(final @Nonnull HttpRequest req) {
+    private HttpResponse<String> send(final @Nonnull HttpRequest req) {
         final HttpResponse<String> resp;
         try {
-            resp = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            // No explicit charset: ofString() honours the response Content-Type
+            // charset and falls back to UTF-8 when none is declared.
+            resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         } catch (final IOException e) {
             throw new IfconfigException("Transport error calling " + req.uri(), e);
         } catch (final InterruptedException e) {
@@ -201,12 +239,22 @@ public final class IfconfigClient {
                     resp.statusCode(),
                     resp.body());
         }
-        return resp.body();
+        return resp;
     }
 
     @Nonnull
     private static String stripTrailingSlash(final @Nonnull String s) {
-        return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
+        var end = s.length();
+        while (end > 0 && s.charAt(end - 1) == '/') {
+            end--;
+        }
+        return s.substring(0, end);
+    }
+
+    private static void requireNonBlank(final @Nullable String value, final @Nonnull String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + " must not be null or blank");
+        }
     }
 
     // ---------- builder ----------
@@ -269,6 +317,7 @@ public final class IfconfigClient {
         }
 
         public IfconfigClient build() {
+            requireNonBlank(baseUrl, "baseUrl");
             return new IfconfigClient(this);
         }
     }
