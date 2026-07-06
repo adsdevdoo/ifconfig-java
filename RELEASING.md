@@ -97,9 +97,12 @@ add four secrets:
    - builds + tests,
    - generates sources + javadoc jars,
    - signs everything with the release GPG key,
-   - uploads to Central Portal and waits for the artifact to be
-     **published** (not just staged) — fails the job if Central rejects
-     it.
+   - uploads to Central Portal and waits until Central has **validated**
+     the bundle — fails the job if validation is rejected. With
+     `autoPublish=true` Central then publishes it automatically in the
+     background; the job intentionally does *not* block on full
+     propagation (polling until `published` used to fail the job on
+     transient 502s from Central's status API).
 5. New version appears under `rs.adsdev:ifconfig-java` on
    [search.maven.org](https://search.maven.org/) within ~15 min.
 

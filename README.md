@@ -39,6 +39,10 @@ IpInfo ru = client.lookup("77.88.55.77");
 IpInfo justCountry = client.lookup("8.8.8.8",
         EnumSet.of(Field.COUNTRY, Field.COUNTRY_CODE));
 
+// Same, but via the numeric bitmask encoding (?fields=N)
+IpInfo alsoCountry = client.lookup("8.8.8.8",
+        Field.toBitmask(EnumSet.of(Field.COUNTRY, Field.COUNTRY_CODE)));
+
 // Plain text (own IP only)
 String ip = client.plain();
 
