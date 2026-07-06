@@ -8,6 +8,7 @@ for JSON.
 
 Requires **JDK 21+**.
 
+Changelog: see [CHANGELOG.md](CHANGELOG.md).
 Release process: see [RELEASING.md](RELEASING.md).
 
 ## Maven
