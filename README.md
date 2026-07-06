@@ -31,18 +31,18 @@ IfconfigClient client = IfconfigClient.builder()
 
 // Own IP + geo
 IpInfo me = client.myIp();
-System.out.println(me.country() + " / " + me.city());
+
+String country = me.country(); // "RS"
+String city = me.city();       // "Novi Sad"
 
 // Arbitrary IP
 IpInfo ru = client.lookup("77.88.55.77");
 
 // Restrict to a few fields (skip serializing the rest)
-IpInfo justCountry = client.lookup("8.8.8.8",
-        EnumSet.of(Field.COUNTRY, Field.COUNTRY_CODE));
+IpInfo justCountry = client.lookup("8.8.8.8", EnumSet.of(Field.COUNTRY, Field.COUNTRY_CODE));
 
 // Same, but via the numeric bitmask encoding (?fields=N)
-IpInfo alsoCountry = client.lookup("8.8.8.8",
-        Field.toBitmask(EnumSet.of(Field.COUNTRY, Field.COUNTRY_CODE)));
+IpInfo alsoCountry = client.lookup("8.8.8.8", Field.toBitmask(EnumSet.of(Field.COUNTRY, Field.COUNTRY_CODE)));
 
 // Plain text (own IP only)
 String ip = client.plain();
@@ -50,7 +50,8 @@ String ip = client.plain();
 // Batch lookup (up to 100 items, requires API key)
 List<IpInfo> hits = client.batch(List.of(
         new BatchQuery("1.1.1.1"),
-        new BatchQuery("8.8.8.8", "country,city")));
+        new BatchQuery("8.8.8.8", "country,city")
+));
 
 // Server-side field bit registry
 Map<String, Integer> bits = client.fieldBits();
