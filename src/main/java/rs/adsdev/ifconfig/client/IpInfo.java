@@ -1,7 +1,6 @@
 package rs.adsdev.ifconfig.client;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * Flat response shape from {@code /json}, {@code /xml}, and per-item
@@ -13,7 +12,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * server omitted (e.g., enrichment for a private IP, or fields filtered out via
  * {@code ?fields=}) arrives as {@code null}.
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record IpInfo(
         String status,

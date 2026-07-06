@@ -15,13 +15,14 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>{@link #wireName()} – the JSON key, joined with commas:
  *       {@code ?fields=country,city,isp}.</li>
- *   <li>{@link #bit()} – the numeric position; OR the bits of the desired
- *       fields and pass the result as {@code ?fields=N}.</li>
+ *   <li>{@link #bit()} – the bit value (the single-bit mask {@code 1 << position});
+ *       OR the bits of the desired fields and pass the result as
+ *       {@code ?fields=N}.</li>
  * </ul>
  *
  * <p>Bit positions are pinned by the server and never renumbered; new fields
- * claim the next free bit. The 32-bit signed-int ceiling means bits 0–30 are
- * usable.
+ * claim the next free bit. The 32-bit signed-int ceiling means bit positions
+ * 0–30 are usable.
  */
 public enum Field {
     STATUS(         1 << 0,  "status"),
