@@ -20,6 +20,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IfconfigClientTest {
 
     private HttpServer server;
+    private ExecutorService executor;
     private final Deque<CannedResponse> nextResponses = new ArrayDeque<>();
     private final Deque<CapturedRequest> seenRequests = new ArrayDeque<>();
 
@@ -45,13 +47,17 @@ class IfconfigClientTest {
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", new RecordingHandler());
-        server.setExecutor(Executors.newSingleThreadExecutor());
+        executor = Executors.newSingleThreadExecutor();
+        server.setExecutor(executor);
         server.start();
     }
 
     @AfterEach
     void stop() {
         server.stop(0);
+        // HttpServer.stop() does not shut down a caller-supplied executor, so
+        // do it here — otherwise every test leaks a worker thread.
+        executor.shutdownNow();
     }
 
     private IfconfigClient client() {
@@ -74,6 +80,7 @@ class IfconfigClientTest {
         assertEquals("GET", req.method);
         assertEquals("/json", req.path);
         assertEquals("Bearer test-token", req.headers.get("Authorization"));
+        assertEquals("application/json", req.headers.get("Accept"));
         assertTrue(info.isSuccess());
         assertEquals("DE", info.countryCode());
         assertEquals("Berlin", info.city());
@@ -119,6 +126,8 @@ class IfconfigClientTest {
         var req = seenRequests.pop();
 
         assertEquals("/plain", req.path);
+        // /plain returns text, so the client must not claim it only accepts JSON.
+        assertEquals("text/plain", req.headers.get("Accept"));
         assertEquals("203.0.113.5", body);
     }
 
@@ -134,6 +143,7 @@ class IfconfigClientTest {
         assertEquals("GET", req.method);
         assertEquals("/xml", req.path);
         assertEquals("ip=203.0.113.5", req.query);
+        assertEquals("application/xml", req.headers.get("Accept"));
         assertEquals(payload, body);
     }
 
@@ -220,11 +230,102 @@ class IfconfigClientTest {
     }
 
     @Test
-    @DisplayName("Field.toQuery() emits wire-name CSV and Field.toBitmask() ORs bit positions, both matching server encoding")
+    @DisplayName("Field.toQuery() emits wire-name CSV and Field.toBitmask() ORs bit values, both matching server encoding")
     void fieldToQueryAndBitmaskMatchServerEncoding() {
         // Mirrors the FlatField bits pinned on the server: country=1<<5, city=1<<9.
         assertEquals("country,city", Field.toQuery(List.of(Field.COUNTRY, Field.CITY)));
         assertEquals((1 << 5) | (1 << 9), Field.toBitmask(List.of(Field.COUNTRY, Field.CITY)));
+    }
+
+    @Test
+    @DisplayName("lookup(ip, bitmask) sends ?ip=&fields=N using the numeric encoding")
+    void lookupByBitmaskSendsNumericFieldsQuery() {
+        nextResponses.push(json("""
+                {"status":"success","country":"Russia","countryCode":"RU"}
+                """));
+
+        var mask = Field.toBitmask(EnumSet.of(Field.COUNTRY, Field.CITY));
+        var info = client().lookup("8.8.8.8", mask);
+        var req = seenRequests.pop();
+
+        assertEquals("/json", req.path);
+        assertEquals("ip=8.8.8.8&fields=" + mask, req.query);
+        assertEquals("RU", info.countryCode());
+    }
+
+    @Test
+    @DisplayName("Transport failure (connection refused) raises IfconfigException with status 0 and null body")
+    void transportFailureRaisesIfconfigException() {
+        // Port 1 has nothing listening → connection refused → IOException path.
+        var offline = IfconfigClient.builder()
+                .baseUrl("http://127.0.0.1:1")
+                .build();
+
+        var ex = assertThrows(IfconfigException.class, offline::myIp);
+        assertEquals(0, ex.statusCode());
+        assertNull(ex.body());
+    }
+
+    @Test
+    @DisplayName("Request that outlives requestTimeout raises IfconfigException (status 0)")
+    void requestTimeoutRaisesIfconfigException() {
+        nextResponses.push(new CannedResponse(200, "application/json",
+                "{\"status\":\"success\"}", 2_000L));
+
+        var slow = IfconfigClient.builder()
+                .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                .requestTimeout(Duration.ofMillis(300))
+                .build();
+
+        var ex = assertThrows(IfconfigException.class, slow::myIp);
+        assertEquals(0, ex.statusCode());
+    }
+
+    @Test
+    @DisplayName("batch() rejects an empty list and a list over the server cap without hitting the network")
+    void batchRejectsInvalidSizes() {
+        assertThrows(IllegalArgumentException.class, () -> client().batch(List.of()));
+
+        var tooMany = java.util.stream.IntStream.rangeClosed(0, 100)
+                .mapToObj(i -> new BatchQuery("1.1.1." + i))
+                .toList(); // 101 items > MAX_BATCH_SIZE
+        assertThrows(IllegalArgumentException.class, () -> client().batch(tooMany));
+
+        assertTrue(seenRequests.isEmpty(), "no request should reach the server on validation failure");
+    }
+
+    @Test
+    @DisplayName("Blank ip and blank baseUrl are rejected with IllegalArgumentException")
+    void blankInputsAreRejected() {
+        assertThrows(IllegalArgumentException.class, () -> client().lookup("  "));
+        assertThrows(IllegalArgumentException.class, () -> client().lookup("", EnumSet.of(Field.COUNTRY)));
+        assertThrows(IllegalArgumentException.class, () -> client().xml(""));
+        assertThrows(IllegalArgumentException.class, () -> IfconfigClient.builder().baseUrl("  ").build());
+        assertTrue(seenRequests.isEmpty(), "no request should reach the server on validation failure");
+    }
+
+    @Test
+    @DisplayName("A 2xx response with an unparseable body raises IfconfigException carrying the status and raw body")
+    void unparseableBodyCarriesStatusAndBody() {
+        nextResponses.push(new CannedResponse(200, "application/json", "this is not json"));
+
+        var ex = assertThrows(IfconfigException.class, () -> client().myIp());
+        assertEquals(200, ex.statusCode());
+        var body = ex.body();
+        assertNotNull(body);
+        assertTrue(body.contains("this is not json"));
+    }
+
+    @Test
+    @DisplayName("batch() without an apiKey fails fast with IllegalStateException and no network call")
+    void batchWithoutApiKeyFailsFast() {
+        var keyless = IfconfigClient.builder()
+                .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                .build();
+
+        assertThrows(IllegalStateException.class,
+                () -> keyless.batch(List.of(new BatchQuery("1.1.1.1"))));
+        assertTrue(seenRequests.isEmpty(), "no request should reach the server when apiKey is missing");
     }
 
     // ---------- test harness ----------
@@ -233,7 +334,11 @@ class IfconfigClientTest {
         return new CannedResponse(200, "application/json", body.trim());
     }
 
-    private record CannedResponse(int status, String contentType, String body) {}
+    private record CannedResponse(int status, String contentType, String body, long delayMillis) {
+        CannedResponse(int status, String contentType, String body) {
+            this(status, contentType, body, 0L);
+        }
+    }
 
     private record CapturedRequest(String method, String path, String query,
                                    Map<String, String> headers, String body) {}
@@ -261,6 +366,13 @@ class IfconfigClientTest {
             var resp = nextResponses.isEmpty()
                     ? new CannedResponse(500, "text/plain", "no canned response")
                     : nextResponses.pop();
+            if (resp.delayMillis > 0) {
+                try {
+                    Thread.sleep(resp.delayMillis);
+                } catch (final InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             var body = resp.body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", resp.contentType);
             exchange.sendResponseHeaders(resp.status, body.length);
