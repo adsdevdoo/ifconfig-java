@@ -59,16 +59,32 @@
         <central-publishing-maven-plugin.version>0.7.0</central-publishing-maven-plugin.version>
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <!-- Pins every Jackson module (databind, core, annotations) to one
+                 coherent version instead of letting them drift transitively. -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>jakarta.annotation</groupId>
             <artifactId>jakarta.annotation-api</artifactId>
             <version>${jakarta-annotation.version}</version>
+            <!-- Compile-time nullability metadata only; consumers don't need it
+                 on their runtime classpath, so keep it off transitively. -->
+            <optional>true</optional>
         </dependency>
 
         <dependency>
