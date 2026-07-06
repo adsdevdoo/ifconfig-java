@@ -16,7 +16,7 @@ Release process: see [RELEASING.md](RELEASING.md).
 <dependency>
     <groupId>rs.adsdev</groupId>
     <artifactId>ifconfig-java</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
